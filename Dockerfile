@@ -1,11 +1,11 @@
-# Base oficial do XRay
+# Base: imagem oficial do Xray (mais estável que V2Ray puro)
 FROM teddysun/xray:latest
 
-# Copiar configuração
+# Copiar o arquivo de configuração
 COPY config.json /etc/xray/config.json
 
-# Expor porta TCP (443)
+# Porta padrão para WebSocket sobre HTTPS
 EXPOSE 443
 
-# Comando de inicialização
-CMD ["xray", "-config", "/etc/xray/config.json"]
+# Comando para iniciar o servidor
+CMD ["xray", "run", "-config", "/etc/xray/config.json"]
