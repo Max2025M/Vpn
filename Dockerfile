@@ -16,8 +16,9 @@ RUN apk add --no-cache bash curl sudo mosquitto net-tools
 # Criar diretórios de dados
 RUN mkdir -p /data /mosquitto/config /mosquitto/data /mosquitto/log
 
-# Copiar arquivo de configuração Mosquitto (opcional)
-RUN echo "allow_anonymous true\nlistener 1883" > /mosquitto/config/mosquitto.conf
+# Configuração do Mosquitto (broker interno)
+RUN echo "allow_anonymous true" > /mosquitto/config/mosquitto.conf && \
+    echo "listener 1883" >> /mosquitto/config/mosquitto.conf
 
 # Baixar e instalar Netmaker
 RUN curl -L https://github.com/gravitl/netmaker/releases/latest/download/netmaker-linux-amd64 -o /usr/local/bin/netmaker && \
