@@ -1,5 +1,5 @@
-# Base: Alpine com bash e utilitários
-FROM alpine:3.18
+# Base: Debian
+FROM debian:stable-slim
 
 # Variáveis de ambiente
 ENV ADMIN_PASSWORD=Massingue2004
@@ -11,7 +11,9 @@ ENV MQ_BROKER_HOST=localhost
 ENV MQ_BROKER_PORT=1883
 
 # Instalar dependências
-RUN apk add --no-cache bash curl sudo mosquitto net-tools
+RUN apt-get update && \
+    apt-get install -y bash curl mosquitto net-tools && \
+    rm -rf /var/lib/apt/lists/*
 
 # Criar diretórios de dados
 RUN mkdir -p /data /mosquitto/config /mosquitto/data /mosquitto/log
@@ -37,4 +39,4 @@ CMD bash -c "\
   echo 'Aguardando 2s...' && sleep 2 && \
   echo 'Iniciando Netmaker...' && \
   export MQ_BROKER=${MQ_BROKER_HOST}:${MQ_BROKER_PORT} && \
-  netmaker server --auto-setup"
+  /usr/local/bin/netmaker server --auto-setup"
