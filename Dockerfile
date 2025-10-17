@@ -1,5 +1,5 @@
 # Usar imagem oficial Netmaker Open Source
-FROM gravitl/netmaker-ee:latest
+FROM gravitl/netmaker:latest
 
 # Criar diretório de dados persistente
 RUN mkdir -p /data
