@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Gerador TTS (Kokoro) — Render</title>
+<style>
+  /* CSS embutido */
+  :root{--bg:#f7f7fb;--card:#fff;--accent:#3b82f6}
+  body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;background:var(--bg);display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+  .card{width:100%;max-width:880px;background:var(--card);border-radius:12px;box-shadow:0 6px 30px rgba(20,20,50,0.08);padding:22px}
+  h1{margin:0 0 10px;font-size:20px}
+  .row{display:flex;gap:12px;margin-top:12px;flex-wrap:wrap}
+  textarea{width:100%;min-height:140px;padding:12px;border-radius:8px;border:1px solid #e6e9ef;resize:vertical;font-size:15px}
+  select, button{padding:10px 12px;border-radius:8px;border:1px solid #e6e9ef;background:#fff}
+  .controls{display:flex;gap:10px;align-items:center}
+  button.primary{background:var(--accent);color:#fff;border:0;cursor:pointer}
+  .progressWrap{margin-top:14px;display:none}
+  progress{width:100%;height:14px;border-radius:8px}
+  .popup{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:none;align-items:center;justify-content:center}
+  .popupBox{background:#fff;padding:18px;border-radius:10px;max-width:720px;width:90%}
+  .closeBtn{float:right;cursor:pointer;font-weight:bold}
+  .small{font-size:13px;color:#666;margin-top:8px}
+  .voicesGrid{max-height:160px;overflow:auto;border:1px solid #f0f0f3;padding:8px;border-radius:8px;background:#fbfbfd}
+  a.downloadBtn{display:inline-block;margin-top:12px;padding:8px 12px;border-radius:8px;background:#111;color:#fff;text-decoration:none}
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Gerador de Áudio — Kokoro TTS (Local no container)</h1>
+    <p class="small">Digite o texto, escolha idioma e locutor. A lista de vozes/idiomas é carregada automaticamente.</p>
+
+    <textarea id="text" placeholder="Digite ou cole aqui o texto que deseja converter..."></textarea>
+
+    <div class="row controls" style="margin-top:12px">
+      <select id="languageSelect"></select>
+      <select id="voiceSelect" style="flex:1"></select>
+      <button id="generate" class="primary">Gerar Áudio</button>
+    </div>
+
+    <div class="progressWrap" id="progressWrap">
+      <div style="display:flex;justify-content:space-between">
+        <div class="small" id="progressText">Aguardando...</div>
+        <div class="small" id="percentText">0%</div>
+      </div>
+      <progress id="progressBar" max="100" value="0"></progress>
+    </div>
+  </div>
+
+  <!-- popup -->
+  <div class="popup" id="popup">
+    <div class="popupBox">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <strong>Áudio gerado</strong>
+        <span class="closeBtn" id="closePopup">✕</span>
+      </div>
+      <div style="margin-top:12px">
+        <audio id="player" controls style="width:100%"></audio>
+        <div id="downloadWrap"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* JS embutido - frontend */
+const languageSelect = document.getElementById('languageSelect');
+const voiceSelect = document.getElementById('voiceSelect');
+const generateBtn = document.getElementById('generate');
+const textEl = document.getElementById('text');
+const progressWrap = document.getElementById('progressWrap');
+const progressBar = document.getElementById('progressBar');
+const progressText = document.getElementById('progressText');
+const percentText = document.getElementById('percentText');
+const popup = document.getElementById('popup');
+const closePopup = document.getElementById('closePopup');
+const player = document.getElementById('player');
+const downloadWrap = document.getElementById('downloadWrap');
+
+let currentSSE = null;
+
+async function fetchVoices(){
+  try {
+    const r = await fetch('/voices');
+    const j = await r.json();
+    // popula idiomas
+    languageSelect.innerHTML = '';
+    (j.languages||[]).forEach(l => {
+      const opt = document.createElement('option');
+      opt.value = l.code || l;
+      opt.textContent = (l.name || l.code || l);
+      languageSelect.appendChild(opt);
+    });
+    // popula vozes
+    voiceSelect.innerHTML = '';
+    (j.voices||[]).forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v.id || v;
+      opt.textContent = `${v.name || v.id} ${v.lang? '— ' + v.lang : ''}`;
+      opt.dataset.lang = v.lang || '';
+      voiceSelect.appendChild(opt);
+    });
+    // filtra vozes por idioma ao mudar languageSelect
+    languageSelect.addEventListener('change', filterByLang);
+    filterByLang();
+  } catch (e) {
+    console.error('voices load error', e);
+    // fallback se erro: preenche opções padrão
+    languageSelect.innerHTML = '<option value="pt">Português</option><option value="en">English</option>';
+    voiceSelect.innerHTML = '<option value="pt_female_1">PT Female 1</option><option value="pt_male_1">PT Male 1</option>';
+  }
+}
+
+function filterByLang(){
+  const chosen = languageSelect.value;
+  // seleciona primeiro compatível
+  let found = false;
+  for (const opt of voiceSelect.options){
+    if (!opt.dataset.lang || opt.dataset.lang === '' || opt.dataset.lang.startsWith(chosen)) {
+      opt.style.display = '';
+      if (!found){ opt.selected = true; found = true; }
+    } else {
+      opt.style.display = 'none';
+    }
+  }
+}
+
+function resetProgress(){
+  progressBar.value = 0;
+  percentText.textContent = '0%';
+  progressText.textContent = 'Aguardando...';
+  progressWrap.style.display = 'none';
+}
+
+function startSSE(jobId){
+  if (currentSSE) currentSSE.close();
+  const evt = new EventSource(`/progress/${jobId}`);
+  progressWrap.style.display = 'block';
+  progressBar.value = 2;
+  percentText.textContent = '2%';
+  progressText.textContent = 'Iniciando conversão...';
+
+  evt.onmessage = ()=>{};
+  evt.addEventListener('log', (ev) => {
+    try {
+      const txt = JSON.parse(ev.data);
+      // atualizar barra heurística (com base em palavras-chave)
+      if (/loading|download|fetch|downloaded|initializing|Preparing/i.test(txt)) {
+        progressBar.value = Math.min(60, progressBar.value + 8);
+      } else if (/synthesis|synthesizing|generating|writing|encode/i.test(txt)) {
+        progressBar.value = Math.min(85, progressBar.value + 7);
+      } else if (/done|PROCESS_EXIT/i.test(txt)) {
+        progressBar.value = 95;
+      } else {
+        progressBar.value = Math.min(88, progressBar.value + 4);
+      }
+      percentText.textContent = Math.min(99, Math.round((progressBar.value/100)*100)) + '%';
+      progressText.textContent = (txt.length > 120? txt.substr(0,120)+'...' : txt);
+    } catch(e){ /* ignore */ }
+  });
+
+  evt.addEventListener('finished', (ev) => {
+    try {
+      const payload = JSON.parse(ev.data);
+      progressBar.value = 100;
+      percentText.textContent = '100%';
+      progressText.textContent = 'Concluído';
+      // mostra popup com áudio
+      showAudio(payload.url);
+    } catch(e){
+      console.error(e);
+    } finally {
+      setTimeout(()=>{ evt.close(); }, 800);
+    }
+  });
+
+  evt.onerror = (e) => {
+    console.log('SSE error', e);
+    // não fecha automaticamente; se closed, we'll fallback
+  };
+  currentSSE = evt;
+}
+
+function showAudio(url){
+  player.src = url;
+  downloadWrap.innerHTML = `<a class="downloadBtn" href="${url}" download="audio.mp3">Baixar áudio</a>`;
+  popup.style.display = 'flex';
+}
+
+closePopup.addEventListener('click', ()=>{ popup.style.display='none'; resetProgress(); if(currentSSE) { currentSSE.close(); currentSSE=null; } });
+
+generateBtn.addEventListener('click', async ()=>{
+  const text = textEl.value.trim();
+  const voice = voiceSelect.value;
+  const language = languageSelect.value;
+  if (!text) { alert('Digite algum texto'); return; }
+  progressWrap.style.display = 'block';
+  progressBar.value = 5;
+  percentText.textContent = '5%';
+  progressText.textContent = 'Enviando para geração...';
+  try {
+    const r = await fetch('/generate', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ text, voice, language })
+    });
+    const j = await r.json();
+    if (j.id) {
+      startSSE(j.id);
+    } else {
+      throw new Error('no job id');
+    }
+  } catch (e) {
+    alert('Erro ao iniciar geração: ' + (e.message||e));
+    resetProgress();
+  }
+});
+
+// inicia carregamento vozes
+fetchVoices();
+</script>
+</body>
+</html>
