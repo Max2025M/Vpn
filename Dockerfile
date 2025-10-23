@@ -3,15 +3,15 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /kokoro_cache
 
-# Dependências do sistema
+# Instalar dependências do sistema
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y git ffmpeg && \
     rm -rf /var/lib/apt/lists/*
 
-# Instala Kokoro CLI
+# Instalar Kokoro CLI
 RUN pip install --no-cache-dir kokoro-tts
 
-# Força o download dos modelos e vozes
+# Pré-carregar vozes/modelos
 RUN kokoro-tts --list-voices || true
 
 # Fase final
@@ -31,14 +31,17 @@ ENV KOKORO_CACHE_DIR=/kokoro_cache
 # Instalar Kokoro TTS
 RUN pip install --no-cache-dir kokoro-tts
 
+# Criar pasta public antes de copiar arquivos
+RUN mkdir -p public
+
 # Copiar backend e frontend
 COPY server.js .
 COPY index.html ./public/index.html
 
-# Node.js dependências
+# Instalar dependências Node.js
 RUN npm init -y && npm install express cors body-parser uuid
 
-# Pasta de audios
+# Criar pasta de audios
 RUN mkdir audios
 
 EXPOSE 3000
