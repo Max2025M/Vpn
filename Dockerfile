@@ -1,50 +1,20 @@
-# ===============================
-# FASE 1 - Pré-carrega o modelo Kokoro TTS
-# ===============================
-FROM python:3.12-slim AS builder
+# Imagem leve Node.js
+FROM node:18-slim
 
-WORKDIR /kokoro_cache
+# Instala Python e gTTS
+RUN apt-get update && apt-get install -y python3 python3-pip && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir gTTS
 
-# Instalar dependências de compilação necessárias
-RUN apt-get update && \
-    apt-get install -y git build-essential python3-dev ffmpeg libffi-dev && \
-    rm -rf /var/lib/apt/lists/*
-
-# Instalar Kokoro TTS
-RUN pip install --no-cache-dir kokoro-tts
-
-# Pré-carregar vozes para cache
-RUN kokoro-tts --list-voices || true
-
-
-# ===============================
-# FASE 2 - Backend Node + Kokoro
-# ===============================
-FROM node:20-slim
-
+# Cria diretórios
 WORKDIR /app
+RUN mkdir -p /app/public /app/audios
 
-# Instalar dependências do sistema
-RUN apt-get update && \
-    apt-get install -y python3 python3-pip ffmpeg git build-essential libffi-dev && \
-    rm -rf /var/lib/apt/lists/*
-
-# Copiar cache do modelo da primeira fase
-COPY --from=builder /kokoro_cache /kokoro_cache
-ENV KOKORO_CACHE_DIR=/kokoro_cache
-
-# Instalar Kokoro TTS
-RUN pip install --no-cache-dir kokoro-tts
-
-# Criar diretórios necessários
-RUN mkdir -p public audios
-
-# Copiar arquivos do projeto
+# Copia arquivos
 COPY server.js .
 COPY index.html ./public/index.html
 
-# Instalar dependências Node.js
-RUN npm init -y && npm install express cors body-parser uuid
+# Instala dependências Node
+RUN npm init -y && npm install express cors uuid
 
 EXPOSE 3000
 CMD ["node", "server.js"]
