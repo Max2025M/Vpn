@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Conversor de Texto em Áudio 🎧</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f3f3f3;
+      text-align: center;
+      margin: 0;
+      padding: 40px;
+    }
+    h1 { color: #333; }
+    textarea {
+      width: 80%;
+      height: 120px;
+      font-size: 16px;
+      border-radius: 8px;
+      padding: 10px;
+      border: 1px solid #ccc;
+    }
+    select, button {
+      font-size: 16px;
+      padding: 10px 15px;
+      margin: 10px;
+      border-radius: 8px;
+      border: none;
+    }
+    button {
+      background-color: #007bff;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover { background-color: #0056b3; }
+    #progress {
+      width: 80%;
+      height: 20px;
+      background: #ddd;
+      margin: 20px auto;
+      border-radius: 10px;
+      overflow: hidden;
+      display: none;
+    }
+    #bar {
+      width: 0%;
+      height: 100%;
+      background: #007bff;
+      transition: width 0.5s;
+    }
+    #popup {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.6);
+      justify-content: center;
+      align-items: center;
+    }
+    #popupContent {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      text-align: center;
+      width: 90%;
+      max-width: 400px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎤 Conversor de Texto em Áudio</h1>
+
+  <textarea id="text" placeholder="Digite seu texto aqui..."></textarea><br>
+  <select id="language"></select><br>
+  <button onclick="gerarAudio()">Gerar Áudio</button>
+
+  <div id="progress"><div id="bar"></div></div>
+
+  <div id="popup">
+    <div id="popupContent">
+      <h3>✅ Áudio gerado!</h3>
+      <audio id="player" controls></audio><br>
+      <a id="download" download="audio.mp3"><button>⬇️ Baixar</button></a>
+      <br><br>
+      <button onclick="fecharPopup()">Fechar</button>
+    </div>
+  </div>
+
+  <script>
+    async function carregarIdiomas() {
+      const res = await fetch("/voices");
+      const data = await res.json();
+      const langSel = document.getElementById("language");
+      langSel.innerHTML = data.languages.map(l =>
+        `<option value="${l.code}">${l.name} (${l.code})</option>`
+      ).join('');
+    }
+
+    async function gerarAudio() {
+      const text = document.getElementById("text").value.trim();
+      const language = document.getElementById("language").value;
+      if (!text) return alert("Digite um texto primeiro!");
+      document.getElementById("progress").style.display = "block";
+      let bar = document.getElementById("bar");
+      bar.style.width = "10%";
+
+      const res = await fetch("/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, language })
+      });
+
+      let pct = 10;
+      const loading = setInterval(() => {
+        if (pct < 95) { pct += 5; bar.style.width = pct + "%"; }
+      }, 400);
+
+      const data = await res.json();
+      clearInterval(loading);
+
+      if (data.url) {
+        bar.style.width = "100%";
+        document.getElementById("progress").style.display = "none";
+        document.getElementById("popup").style.display = "flex";
+        document.getElementById("player").src = data.url;
+        document.getElementById("download").href = data.url;
+      } else {
+        alert("Erro ao gerar áudio.");
+      }
+    }
+
+    function fecharPopup() {
+      document.getElementById("popup").style.display = "none";
+    }
+
+    carregarIdiomas();
+  </script>
+</body>
+</html>
